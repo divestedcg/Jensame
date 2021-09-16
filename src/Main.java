@@ -4,30 +4,55 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.util.HashSet;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class Main {
 
     private static ThreadPoolExecutor threadPoolExecutor = null;
     private static final ConcurrentHashMap<File, Long> fileHashes = new ConcurrentHashMap<>();
+    private static AtomicInteger filesRead = new AtomicInteger();
     private static AtomicLong dataRead = new AtomicLong();
 
     public static void main(String[] args) {
         long startTime = System.currentTimeMillis();
+
+        //Start the hashing
         threadPoolExecutor = (ThreadPoolExecutor) Executors.newScheduledThreadPool(getMaxThreads());
-        hashFilesRecursive(new File("/home/tad/"));
-        while(threadPoolExecutor.getActiveCount() > 0) {
-            //Do nothing
+        hashFilesRecursive(new File("/home/tad/Downloads/"));
+
+        //Wait for hashing to complete
+        while (threadPoolExecutor.getActiveCount() > 0) {}
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
-/*        for(Map.Entry<File, Long> fileHash : fileHashes.entrySet()) {
-            System.out.println(fileHash.getKey() + " - " + fileHash.getValue());
-        }*/
-        System.out.println("Hashed " + fileHashes.size() + " files, totalling " + (dataRead.longValue() / 1024L / 1024L) + "MB in " + (System.currentTimeMillis() - startTime) + "ms");
+
+        //Identify all duplicate files
+        HashMap<Long, List<File>> hashedFiles = new HashMap<>();
+        for (Map.Entry<File, Long> sets : fileHashes.entrySet()) {
+            List<File> emptyList = new ArrayList<>();
+            if(hashedFiles.containsKey(sets.getValue())) {
+                emptyList.addAll(hashedFiles.get(sets.getValue()));
+            }
+            emptyList.add(sets.getKey());
+            hashedFiles.put(sets.getValue(), emptyList);
+        }
+
+        //Print out the duplicates
+        for(Map.Entry<Long, List<File>> sameFiles : hashedFiles.entrySet()) {
+            if(sameFiles.getValue().size() > 1) {
+                System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
+            }
+        }
+
+        //Exit
+        System.out.println("Hashed " + filesRead + " files, totalling " + (dataRead.longValue() / 1000L / 1000L) + "MB in " + (System.currentTimeMillis() - startTime) + "ms");
         System.exit(0);
     }
 
@@ -35,12 +60,12 @@ public class Main {
         File[] files = root.listFiles();
         if (files != null && files.length > 0) {
             for (File f : files) {
-                if(!Files.isSymbolicLink(f.toPath())) {
+                if (!Files.isSymbolicLink(f.toPath())) {
                     if (f.isDirectory()) {
                         hashFilesRecursive(f);
                     } else {
                         if (Files.isRegularFile(f.toPath()) && f.canRead()) {
-                            threadPoolExecutor.execute(new Runnable() {
+                            threadPoolExecutor.submit(new Runnable() {
                                 @Override
                                 public void run() {
                                     getFileHash(f);
@@ -62,24 +87,17 @@ public class Main {
             do {
                 numRead = fis.read(buffer);
                 if (numRead > 0) {
-                    hash = LongHashFunction.xx128low(hash).hashBytes(buffer);
+                    hash = LongHashFunction.xx3(hash).hashBytes(buffer);
                 }
             } while (numRead != -1);
             fis.close();
+            filesRead.getAndIncrement();
             dataRead.getAndAdd(file.length());
             System.out.println(file.toString() + " - " + hash);
             fileHashes.put(file, hash);
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    private static void benchmarkXX(LongHashFunction hashFunction) {
-        long startTime = System.currentTimeMillis();
-        for(int x = 0; x < 10000000; x++) {
-            long hash = hashFunction.hashChars("BENCHMARK STRING");
-        }
-        System.out.println(System.currentTimeMillis()-startTime);
     }
 
     public static int getMaxThreads() {
