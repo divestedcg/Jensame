@@ -100,12 +100,8 @@ public class Main {
         //Identify all duplicate files
         ConcurrentHashMap<Long, List<String>> hashedFiles = new ConcurrentHashMap<>();
         for (Map.Entry<String, Long> sets : fileHashes.entrySet()) {
-            List<String> emptyList = new ArrayList<>();
-            if (hashedFiles.containsKey(sets.getValue())) {
-                emptyList.addAll(hashedFiles.get(sets.getValue()));
-            }
-            emptyList.add(sets.getKey());
-            hashedFiles.put(sets.getValue(), emptyList);
+            hashedFiles.putIfAbsent(sets.getValue(), new ArrayList<>());
+            hashedFiles.get(sets.getValue()).add(sets.getKey());
             if (hashedFiles.size() % gcInterval == 0) {
                 printMemUsage("remap " + gcInterval);
                 System.gc();
@@ -123,9 +119,7 @@ public class Main {
             if (sameFiles.getValue().size() > 1) {
                 duplicateFiles += sameFiles.getValue().size();
                 //System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
-                for (String string : sameFiles.getValue()) {
-                    fdupesContents.add(string);
-                }
+                fdupesContents.addAll(sameFiles.getValue());
                 fdupesContents.add("");
                 if (duplicateFiles % gcInterval == 0) {
                     printMemUsage("output " + gcInterval);
