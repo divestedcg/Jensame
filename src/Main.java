@@ -17,12 +17,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import net.openhft.hashing.LongHashFunction;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.io.PrintWriter;
+import java.io.*;
+import java.nio.file.FileStore;
 import java.nio.file.Files;
-import java.util.*;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -36,37 +38,38 @@ public class Main {
     private static AtomicInteger filesRead = new AtomicInteger();
     private static AtomicLong dataRead = new AtomicLong();
     private static int duplicateFiles = 0;
-    private static boolean fdupes = false;
     private static File fdupesOut = null;
     private static ArrayList<String> fdupesContents = new ArrayList<>();
 
     public static void main(String[] args) {
-        if (args.length < 1) {
-            System.out.println("Please provide a path to recurse for duplicates, provide a second path for fdupes output");
+        if (args.length < 2) {
+            System.out.println("Please provide a file for fdupes output, all additional paths will be recursed for duplicated.");
             System.exit(1);
         }
-        File recurse = null;
         if (args[0] != null) {
-            recurse = new File(args[0]);
-            if (!recurse.exists()) {
-                System.out.println("Path doesn't exist!");
-                System.exit(1);
+            if (!args[0].startsWith("/") && !args[0].startsWith(".")) {
+                args[0] = "./" + args[0];
             }
-        }
-        if (args.length > 1 && args[1] != null) {
-            if (!args[1].startsWith("/") && !args[1].startsWith(".")) {
-                args[1] = "./" + args[1];
-            }
-            fdupesOut = new File(args[1]);
+            fdupesOut = new File(args[0]);
             if (fdupesOut.getParentFile().exists() && fdupesOut.getParentFile().isDirectory()) {
-                fdupes = true;
-                System.out.println("fdupes output enabled to " + fdupesOut);
+                System.out.println("fdupes output will be written to " + fdupesOut);
             }
         }
+
         //Start the hashing
         long startTime = System.currentTimeMillis();
         threadPoolExecutor = (ThreadPoolExecutor) Executors.newScheduledThreadPool(getMaxThreads());
-        hashFilesRecursive(recurse);
+        for (int c = 1; c < args.length; c++) {
+            File recurse = null;
+            if (args[c] != null) {
+                recurse = new File(args[c]);
+                if (!recurse.exists()) {
+                    System.out.println("Path doesn't exist: " + recurse);
+                } else {
+                    hashFilesRecursive(recurse);
+                }
+            }
+        }
 
         //Wait for hashing to complete
         while (threadPoolExecutor.getActiveCount() > 0) {
@@ -94,19 +97,16 @@ public class Main {
         for (Map.Entry<Long, List<File>> sameFiles : hashedFiles.entrySet()) {
             if (sameFiles.getValue().size() > 1) {
                 duplicateFiles += sameFiles.getValue().size();
-                System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
-                if (fdupes) {
-                    for (File file : sameFiles.getValue())
-                        fdupesContents.add(file.toString());
-                    fdupesContents.add("");
+                //System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
+                for (File file : sameFiles.getValue()) {
+                    fdupesContents.add(file.toString());
                 }
+                fdupesContents.add("");
             }
         }
 
         //Write out the fdupes
-        if (fdupes) {
-            writeArrayToFile(fdupesOut, fdupesContents);
-        }
+        writeArrayToFile(fdupesOut, fdupesContents);
 
         //Exit
         long mbRead = dataRead.longValue() / 1000L / 1000L;
@@ -188,4 +188,17 @@ public class Main {
         }*/
         return maxTheads;
     }
+
+    //Credit (CC BY-SA 4.0): https://stackoverflow.com/a/64169740
+    public static Path mountOf(Path p) throws IOException {
+        FileStore fs = Files.getFileStore(p);
+        Path temp = p.toAbsolutePath();
+        Path mountp = temp;
+
+        while ((temp = temp.getParent()) != null && fs.equals(Files.getFileStore(temp))) {
+            mountp = temp;
+        }
+        return mountp;
+    }
+
 }

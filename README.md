@@ -2,12 +2,20 @@ jensame
 =======
 
 A high-performance duplicate file finder.
+Meant for use with btrfs/xfs + duperemove utility.
 
 Use
 ---
 - gradle assemble
 - java -jar jensame.jar $pathToRecurse $fdupesOutput
 - cat $fdupesOutput | sudo duperemove -d -b4096 --fdupes -v
+
+TODO
+----
+- User defined thread count
+- Default thread count determined by storage medium
+- Sorted by file size optimization?
+- Alternate hash algorithms
 
 Credits
 -------
