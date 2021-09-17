@@ -204,7 +204,11 @@ public class Main {
                 }
             } while (numRead != -1);
             fis.close();
-            filesRead.getAndIncrement();
+            if(filesRead.getAndIncrement() % 10000 == 0) {
+                printMemUsage("hashing 10k");
+                System.gc();
+                printMemUsage("hashing 10k post-gc");
+            }
             dataRead.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
             fileHashes.put(file.toString(), hash);
