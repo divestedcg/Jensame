@@ -128,7 +128,7 @@ public class Main {
                     if (f.isDirectory()) {
                         hashFilesRecursive(f);
                     } else {
-                        if (Files.isRegularFile(f.toPath()) && f.canRead()) {
+                        if (Files.isRegularFile(f.toPath()) && f.canRead() && f.length() >= 4096) {
                             threadPoolExecutor.submit(new Runnable() {
                                 @Override
                                 public void run() {
