@@ -21,11 +21,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.PrintWriter;
-import java.nio.file.FileStore;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,6 +44,7 @@ public class Main {
     private static long originalMountTotalSize = 0;
     private static final long minimumFileSize = (32L * 1024L); //32KB
     private static final long maximumFileSize = (1024L * 1024L * 1024L * 10L); //10GB
+    private static final int gcInterval = 10000;
 
     public static void main(String[] args) {
         if (args.length < 2) {
@@ -100,7 +98,7 @@ public class Main {
         printMemUsage("hash finished");
 
         //Identify all duplicate files
-        HashMap<Long, List<String>> hashedFiles = new HashMap<>();
+        ConcurrentHashMap<Long, List<String>> hashedFiles = new ConcurrentHashMap<>();
         for (Map.Entry<String, Long> sets : fileHashes.entrySet()) {
             List<String> emptyList = new ArrayList<>();
             if (hashedFiles.containsKey(sets.getValue())) {
@@ -108,6 +106,12 @@ public class Main {
             }
             emptyList.add(sets.getKey());
             hashedFiles.put(sets.getValue(), emptyList);
+            if (hashedFiles.size() % gcInterval == 0) {
+                printMemUsage("remap " + gcInterval);
+                System.gc();
+                printMemUsage("remap " + gcInterval + " post-gc");
+            }
+            fileHashes.remove(sets.getKey());
         }
         printMemUsage("duplicate identification");
         fileHashes.clear();
@@ -123,7 +127,13 @@ public class Main {
                     fdupesContents.add(string);
                 }
                 fdupesContents.add("");
+                if (duplicateFiles % gcInterval == 0) {
+                    printMemUsage("output " + gcInterval);
+                    System.gc();
+                    printMemUsage("output " + gcInterval + " post-gc");
+                }
             }
+            hashedFiles.remove(sameFiles.getKey());
         }
         printMemUsage("duplicate output");
         hashedFiles.clear();
@@ -204,10 +214,10 @@ public class Main {
                 }
             } while (numRead != -1);
             fis.close();
-            if(filesRead.getAndIncrement() % 10000 == 0) {
-                printMemUsage("hashing 10k");
+            if (filesRead.getAndIncrement() % gcInterval == 0) {
+                printMemUsage("hashing " + gcInterval);
                 System.gc();
-                printMemUsage("hashing 10k post-gc");
+                printMemUsage("hashing " + gcInterval + " post-gc");
             }
             dataRead.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
@@ -226,7 +236,7 @@ public class Main {
     }
 
     public static void printMemUsage(String stage) {
-        if(DEBUG) {
+        if (DEBUG) {
             long memUsage = ((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024);
             System.out.println("At " + stage + " and currently using " + memUsage + "MB of memory");
         }
