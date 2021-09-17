@@ -135,8 +135,8 @@ public class Main {
             writeArrayToFile(fdupesOut, fdupesContents);
             fdupesContents.clear();
             System.gc();
+            printMemUsage("fdupes output");
         }
-        printMemUsage("fdupes output");
 
         //Status
         long mbRead = dataRead.longValue() / 1000L / 1000L;
@@ -173,7 +173,7 @@ public class Main {
         File[] files = root.listFiles();
         if (files != null && files.length > 0) {
             for (File f : files) {
-                if (!Files.isSymbolicLink(f.toPath())) {
+                if (f.canRead() && !Files.isSymbolicLink(f.toPath())) {
                     if (f.isDirectory() && (f.getTotalSpace() == originalMountTotalSize)) {
                         hashFilesRecursive(f);
                     } else {
@@ -181,7 +181,7 @@ public class Main {
                         //4096 (4*1024) is the absolute minimum
                         //1,048,576 (1024*1024) is the absolute maximum
                         //https://github.com/markfasheh/duperemove/blob/548fc5ea76f97024c4ba90cff7bd8ff7bd36f9e5/duperemove.c#L50
-                        if (Files.isRegularFile(f.toPath()) && f.canRead() && f.length() >= minimumFileSize && f.length() <= maximumFileSize) {
+                        if (Files.isRegularFile(f.toPath()) && f.length() >= minimumFileSize && f.length() <= maximumFileSize) {
                             threadPoolExecutor.submit(new Runnable() {
                                 @Override
                                 public void run() {
