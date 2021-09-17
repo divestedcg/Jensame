@@ -38,7 +38,7 @@ public class Main {
 
     private static final boolean DEBUG = false;
     private static ThreadPoolExecutor threadPoolExecutor = null;
-    private static final ConcurrentHashMap<File, Long> fileHashes = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> fileHashes = new ConcurrentHashMap<>();
     private static final AtomicInteger filesRead = new AtomicInteger();
     private static final AtomicLong dataRead = new AtomicLong();
     private static int duplicateFiles = 0;
@@ -100,9 +100,9 @@ public class Main {
         printMemUsage("hash finished");
 
         //Identify all duplicate files
-        HashMap<Long, List<File>> hashedFiles = new HashMap<>();
-        for (Map.Entry<File, Long> sets : fileHashes.entrySet()) {
-            List<File> emptyList = new ArrayList<>();
+        HashMap<Long, List<String>> hashedFiles = new HashMap<>();
+        for (Map.Entry<String, Long> sets : fileHashes.entrySet()) {
+            List<String> emptyList = new ArrayList<>();
             if (hashedFiles.containsKey(sets.getValue())) {
                 emptyList.addAll(hashedFiles.get(sets.getValue()));
             }
@@ -115,12 +115,12 @@ public class Main {
         printMemUsage("duplicate identification post-gc");
 
         //Output the duplicates
-        for (Map.Entry<Long, List<File>> sameFiles : hashedFiles.entrySet()) {
+        for (Map.Entry<Long, List<String>> sameFiles : hashedFiles.entrySet()) {
             if (sameFiles.getValue().size() > 1) {
                 duplicateFiles += sameFiles.getValue().size();
                 //System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
-                for (File file : sameFiles.getValue()) {
-                    fdupesContents.add(file.toString());
+                for (String string : sameFiles.getValue()) {
+                    fdupesContents.add(string);
                 }
                 fdupesContents.add("");
             }
@@ -177,10 +177,6 @@ public class Main {
                     if (f.isDirectory() && (f.getTotalSpace() == originalMountTotalSize)) {
                         hashFilesRecursive(f);
                     } else {
-                        //131,072 (128*1024) is the default minimum block size of duperemove
-                        //4096 (4*1024) is the absolute minimum
-                        //1,048,576 (1024*1024) is the absolute maximum
-                        //https://github.com/markfasheh/duperemove/blob/548fc5ea76f97024c4ba90cff7bd8ff7bd36f9e5/duperemove.c#L50
                         if (Files.isRegularFile(f.toPath()) && f.length() >= minimumFileSize && f.length() <= maximumFileSize) {
                             threadPoolExecutor.submit(new Runnable() {
                                 @Override
@@ -211,7 +207,7 @@ public class Main {
             filesRead.getAndIncrement();
             dataRead.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
-            fileHashes.put(file, hash);
+            fileHashes.put(file.toString(), hash);
         } catch (Exception e) {
             e.printStackTrace();
         }
