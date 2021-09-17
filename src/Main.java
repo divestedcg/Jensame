@@ -43,7 +43,7 @@ public class Main {
 
     public static void main(String[] args) {
         if (args.length < 2) {
-            System.out.println("Please provide a file for fdupes output, all additional paths will be recursed for duplicated.");
+            System.out.println("Please provide a file for fdupes output, all additional paths will be recursed for duplicates.");
             System.exit(1);
         }
         if (args[0] != null) {
@@ -53,6 +53,9 @@ public class Main {
             fdupesOut = new File(args[0]);
             if (fdupesOut.getParentFile().exists() && fdupesOut.getParentFile().isDirectory()) {
                 System.out.println("fdupes output will be written to " + fdupesOut);
+            } else {
+                System.out.println("Invalid fdupes output");
+                System.exit(1);
             }
         }
 
@@ -106,7 +109,9 @@ public class Main {
         }
 
         //Write out the fdupes
-        writeArrayToFile(fdupesOut, fdupesContents);
+        if(duplicateFiles > 0) {
+            writeArrayToFile(fdupesOut, fdupesContents);
+        }
 
         //Exit
         long mbRead = dataRead.longValue() / 1000L / 1000L;
