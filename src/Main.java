@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class Main {
 
+    private static final boolean DEBUG = false;
     private static ThreadPoolExecutor threadPoolExecutor = null;
     private static final ConcurrentHashMap<File, Long> fileHashes = new ConcurrentHashMap<>();
     private static final AtomicInteger filesRead = new AtomicInteger();
@@ -43,7 +44,7 @@ public class Main {
     private static int duplicateFiles = 0;
     private static File fdupesOut = null;
     private static final ArrayList<String> fdupesContents = new ArrayList<>();
-    private static Path originalMount = null;
+    private static long originalMountTotalSize = 0;
     private static final long minimumFileSize = (32L * 1024L); //32KB
     private static final long maximumFileSize = (1024L * 1024L * 1024L * 10L); //10GB
 
@@ -64,6 +65,7 @@ public class Main {
                 System.exit(1);
             }
         }
+        printMemUsage("init");
 
         //Start the hashing
         long startTime = System.currentTimeMillis();
@@ -75,8 +77,12 @@ public class Main {
                 if (!recurse.exists()) {
                     System.out.println("Path doesn't exist: " + recurse);
                 } else {
-                    originalMount = mountOf(recurse.toPath());
+                    originalMountTotalSize = recurse.getTotalSpace();
+                    printMemUsage("pre-hash");
                     hashFilesRecursive(recurse);
+                    printMemUsage("post-hash");
+                    System.gc();
+                    printMemUsage("post-hash post-gc");
                 }
             }
         }
@@ -91,6 +97,7 @@ public class Main {
                 e.printStackTrace();
             }
         }
+        printMemUsage("hash finished");
 
         //Identify all duplicate files
         HashMap<Long, List<File>> hashedFiles = new HashMap<>();
@@ -102,6 +109,10 @@ public class Main {
             emptyList.add(sets.getKey());
             hashedFiles.put(sets.getValue(), emptyList);
         }
+        printMemUsage("duplicate identification");
+        fileHashes.clear();
+        System.gc();
+        printMemUsage("duplicate identification post-gc");
 
         //Output the duplicates
         for (Map.Entry<Long, List<File>> sameFiles : hashedFiles.entrySet()) {
@@ -114,11 +125,18 @@ public class Main {
                 fdupesContents.add("");
             }
         }
+        printMemUsage("duplicate output");
+        hashedFiles.clear();
+        System.gc();
+        printMemUsage("duplicate output post-gc");
 
         //Write out the fdupes
         if (duplicateFiles > 0) {
             writeArrayToFile(fdupesOut, fdupesContents);
+            fdupesContents.clear();
+            System.gc();
         }
+        printMemUsage("fdupes output");
 
         //Status
         long mbRead = dataRead.longValue() / 1000L / 1000L;
@@ -128,6 +146,7 @@ public class Main {
             mbPerSecond = mbRead / (msSpent / 1000);
         }
         System.out.println("Hashed " + filesRead + " files, totalling " + mbRead + "MB, and identified " + duplicateFiles + " duplicates in " + msSpent + "ms at " + mbPerSecond + "MBps");
+        printMemUsage("finish");
 
         //Exit
         System.exit(0);
@@ -155,7 +174,7 @@ public class Main {
         if (files != null && files.length > 0) {
             for (File f : files) {
                 if (!Files.isSymbolicLink(f.toPath())) {
-                    if (f.isDirectory() && mountOf(f.toPath()).equals(originalMount)) {
+                    if (f.isDirectory() && (f.getTotalSpace() == originalMountTotalSize)) {
                         hashFilesRecursive(f);
                     } else {
                         //131,072 (128*1024) is the default minimum block size of duperemove
@@ -206,21 +225,11 @@ public class Main {
         return maxThreads;
     }
 
-    //Credit (CC BY-SA 4.0): https://stackoverflow.com/a/64169740
-    public static Path mountOf(Path p) {
-        Path mountp = null;
-        try {
-            FileStore fs = Files.getFileStore(p);
-            Path temp = p.toAbsolutePath();
-            mountp = temp;
-
-            while ((temp = temp.getParent()) != null && fs.equals(Files.getFileStore(temp))) {
-                mountp = temp;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+    public static void printMemUsage(String stage) {
+        if(DEBUG) {
+            long memUsage = ((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024);
+            System.out.println("At " + stage + " and currently using " + memUsage + "MB of memory");
         }
-        return mountp;
     }
 
 }
