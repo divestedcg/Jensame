@@ -7,7 +7,7 @@ Meant for use with btrfs/xfs + duperemove utility.
 Use
 ---
 - gradle assemble
-- java -jar jensame.jar $pathToRecurse $fdupesOutput
+- java -jar jensame.jar $fdupesOutput $pathsToRecurse
 - cat $fdupesOutput | sudo duperemove -d -b4096 --fdupes -v
 
 TODO
