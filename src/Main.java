@@ -24,24 +24,24 @@ public class Main {
     private static ArrayList<String> fdupesContents = new ArrayList<>();
 
     public static void main(String[] args) {
-        if(args.length < 1) {
+        if (args.length < 1) {
             System.out.println("Please provide a path to recurse for duplicates, provide a second path for fdupes output");
             System.exit(1);
         }
         File recurse = null;
-        if(args[0] != null) {
+        if (args[0] != null) {
             recurse = new File(args[0]);
             if (!recurse.exists()) {
                 System.out.println("Path doesn't exist!");
                 System.exit(1);
             }
         }
-        if(args.length > 1 && args[1] != null) {
-            if(!args[1].startsWith("/") && !args[1].startsWith(".")) {
+        if (args.length > 1 && args[1] != null) {
+            if (!args[1].startsWith("/") && !args[1].startsWith(".")) {
                 args[1] = "./" + args[1];
             }
             fdupesOut = new File(args[1]);
-            if(fdupesOut.getParentFile().exists() && fdupesOut.getParentFile().isDirectory()) {
+            if (fdupesOut.getParentFile().exists() && fdupesOut.getParentFile().isDirectory()) {
                 fdupes = true;
                 System.out.println("fdupes output enabled to " + fdupesOut);
             }
@@ -54,7 +54,7 @@ public class Main {
         //Wait for hashing to complete
         while (threadPoolExecutor.getActiveCount() > 0) {
         }
-        if(getMaxThreads() == 1) {
+        if (getMaxThreads() == 1) {
             try {
                 Thread.sleep(2000);
             } catch (InterruptedException e) {
@@ -78,21 +78,28 @@ public class Main {
             if (sameFiles.getValue().size() > 1) {
                 duplicateFiles += sameFiles.getValue().size();
                 System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
-                if(fdupes) {
-                    for(File file : sameFiles.getValue())
-                    fdupesContents.add(file.toString());
+                if (fdupes) {
+                    for (File file : sameFiles.getValue())
+                        fdupesContents.add(file.toString());
                     fdupesContents.add("");
                 }
             }
         }
 
         //Write out the fdupes
-        if(fdupes) {
+        if (fdupes) {
             writeArrayToFile(fdupesOut, fdupesContents);
         }
 
         //Exit
-        System.out.println("Hashed " + filesRead + " files, totalling " + (dataRead.longValue() / 1000L / 1000L) + "MB, and identified " + duplicateFiles + " duplicates in " + (System.currentTimeMillis() - startTime) + "ms");
+        long mbRead = dataRead.longValue() / 1000L / 1000L;
+        long msSpent = System.currentTimeMillis() - startTime;
+        long mbPerSecond = mbRead;
+        if (msSpent > 1000) {
+            mbPerSecond = mbRead / (msSpent / 1000);
+        }
+
+        System.out.println("Hashed " + filesRead + " files, totalling " + mbRead + "MB, and identified " + duplicateFiles + " duplicates in " + msSpent + "ms at " + mbPerSecond + "MBps");
         System.exit(0);
     }
 
