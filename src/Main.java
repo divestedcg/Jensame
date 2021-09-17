@@ -145,7 +145,11 @@ public class Main {
                     if (f.isDirectory()) {
                         hashFilesRecursive(f);
                     } else {
-                        if (Files.isRegularFile(f.toPath()) && f.canRead() && f.length() >= 4096) {
+                        //131,072 (128*1024) is the default minimum block size of duperemove
+                        //4096 (4*1024) is the absolute minimum
+                        //1,048,576 (1024*1024) is the absolute maximum
+                        //https://github.com/markfasheh/duperemove/blob/548fc5ea76f97024c4ba90cff7bd8ff7bd36f9e5/duperemove.c#L50
+                        if (Files.isRegularFile(f.toPath()) && f.canRead() && f.length() >= 131072) {
                             threadPoolExecutor.submit(new Runnable() {
                                 @Override
                                 public void run() {
@@ -183,9 +187,9 @@ public class Main {
 
     public static int getMaxThreads() {
         int maxTheads = Runtime.getRuntime().availableProcessors();
-/*        if (maxTheads > 8) {
+        if (maxTheads > 8) {
             maxTheads = 8;
-        }*/
+        }
         return maxTheads;
     }
 
