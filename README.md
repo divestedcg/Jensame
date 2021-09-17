@@ -8,7 +8,7 @@ Use
 ---
 - gradle assemble
 - java -jar jensame.jar $fdupesOutput $pathsToRecurse
-- cat $fdupesOutput | sudo duperemove -d --fdupes -v
+- cat $fdupesOutput | sudo duperemove -d -b32768 --fdupes -v
 
 TODO
 ----

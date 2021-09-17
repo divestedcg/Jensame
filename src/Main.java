@@ -17,7 +17,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import net.openhft.hashing.LongHashFunction;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.PrintWriter;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,11 +38,14 @@ public class Main {
 
     private static ThreadPoolExecutor threadPoolExecutor = null;
     private static final ConcurrentHashMap<File, Long> fileHashes = new ConcurrentHashMap<>();
-    private static AtomicInteger filesRead = new AtomicInteger();
-    private static AtomicLong dataRead = new AtomicLong();
+    private static final AtomicInteger filesRead = new AtomicInteger();
+    private static final AtomicLong dataRead = new AtomicLong();
     private static int duplicateFiles = 0;
     private static File fdupesOut = null;
-    private static ArrayList<String> fdupesContents = new ArrayList<>();
+    private static final ArrayList<String> fdupesContents = new ArrayList<>();
+    private static Path originalMount = null;
+    private static final long minimumFileSize = (32L * 1024L); //32KB
+    private static final long maximumFileSize = (1024L * 1024L * 1024L * 10L); //10GB
 
     public static void main(String[] args) {
         if (args.length < 2) {
@@ -69,12 +75,13 @@ public class Main {
                 if (!recurse.exists()) {
                     System.out.println("Path doesn't exist: " + recurse);
                 } else {
+                    originalMount = mountOf(recurse.toPath());
                     hashFilesRecursive(recurse);
                 }
             }
         }
 
-        //Wait for hashing to complete
+        //Wait for hashing to complete //TODO: improve this
         while (threadPoolExecutor.getActiveCount() > 0) {
         }
         if (getMaxThreads() == 1) {
@@ -96,7 +103,7 @@ public class Main {
             hashedFiles.put(sets.getValue(), emptyList);
         }
 
-        //Print out the duplicates
+        //Output the duplicates
         for (Map.Entry<Long, List<File>> sameFiles : hashedFiles.entrySet()) {
             if (sameFiles.getValue().size() > 1) {
                 duplicateFiles += sameFiles.getValue().size();
@@ -109,19 +116,20 @@ public class Main {
         }
 
         //Write out the fdupes
-        if(duplicateFiles > 0) {
+        if (duplicateFiles > 0) {
             writeArrayToFile(fdupesOut, fdupesContents);
         }
 
-        //Exit
+        //Status
         long mbRead = dataRead.longValue() / 1000L / 1000L;
         long msSpent = System.currentTimeMillis() - startTime;
         long mbPerSecond = mbRead;
         if (msSpent > 1000) {
             mbPerSecond = mbRead / (msSpent / 1000);
         }
-
         System.out.println("Hashed " + filesRead + " files, totalling " + mbRead + "MB, and identified " + duplicateFiles + " duplicates in " + msSpent + "ms at " + mbPerSecond + "MBps");
+
+        //Exit
         System.exit(0);
     }
 
@@ -147,14 +155,14 @@ public class Main {
         if (files != null && files.length > 0) {
             for (File f : files) {
                 if (!Files.isSymbolicLink(f.toPath())) {
-                    if (f.isDirectory()) {
+                    if (f.isDirectory() && mountOf(f.toPath()).equals(originalMount)) {
                         hashFilesRecursive(f);
                     } else {
                         //131,072 (128*1024) is the default minimum block size of duperemove
                         //4096 (4*1024) is the absolute minimum
                         //1,048,576 (1024*1024) is the absolute maximum
                         //https://github.com/markfasheh/duperemove/blob/548fc5ea76f97024c4ba90cff7bd8ff7bd36f9e5/duperemove.c#L50
-                        if (Files.isRegularFile(f.toPath()) && f.canRead() && f.length() >= 131072) {
+                        if (Files.isRegularFile(f.toPath()) && f.canRead() && f.length() >= minimumFileSize && f.length() <= maximumFileSize) {
                             threadPoolExecutor.submit(new Runnable() {
                                 @Override
                                 public void run() {
@@ -191,21 +199,26 @@ public class Main {
     }
 
     public static int getMaxThreads() {
-        int maxTheads = Runtime.getRuntime().availableProcessors();
-        if (maxTheads > 8) {
-            maxTheads = 8;
+        int maxThreads = Runtime.getRuntime().availableProcessors();
+        if (maxThreads > 8) {
+            maxThreads = 8;
         }
-        return maxTheads;
+        return maxThreads;
     }
 
     //Credit (CC BY-SA 4.0): https://stackoverflow.com/a/64169740
-    public static Path mountOf(Path p) throws IOException {
-        FileStore fs = Files.getFileStore(p);
-        Path temp = p.toAbsolutePath();
-        Path mountp = temp;
-
-        while ((temp = temp.getParent()) != null && fs.equals(Files.getFileStore(temp))) {
+    public static Path mountOf(Path p) {
+        Path mountp = null;
+        try {
+            FileStore fs = Files.getFileStore(p);
+            Path temp = p.toAbsolutePath();
             mountp = temp;
+
+            while ((temp = temp.getParent()) != null && fs.equals(Files.getFileStore(temp))) {
+                mountp = temp;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return mountp;
     }
