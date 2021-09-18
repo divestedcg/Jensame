@@ -68,6 +68,7 @@ public class Main {
         //Start the hashing
         long startTime = System.currentTimeMillis();
         threadPoolExecutor = (ThreadPoolExecutor) Executors.newScheduledThreadPool(getMaxThreads());
+        threadPoolExecutor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         for (int c = 1; c < args.length; c++) {
             File recurse = null;
             if (args[c] != null) {
@@ -167,7 +168,7 @@ public class Main {
                         hashFilesRecursive(f);
                     } else {
                         if (Files.isRegularFile(f.toPath()) && f.length() >= minimumFileSize && f.length() <= maximumFileSize) {
-                            threadPoolExecutor.submit(new Runnable() {
+                            threadPoolExecutor.execute(new Runnable() {
                                 @Override
                                 public void run() {
                                     getFileHash(f);
