@@ -10,7 +10,7 @@ Use
 - java -jar jensame.jar $fdupesOutput $pathsToRecurse
 - cat $fdupesOutput | sudo duperemove -d -b32768 --fdupes -v
 - Example output:
-    - Hashed 839625 files, totalling 835933MB, and identified 684150 duplicates in 1617162ms at 516MBps
+    - Found 839625 files, hashed 792967 files, totalling 380284MB, and identified 684150 duplicates in 730470ms at 520MBps
 
 TODO
 ----
