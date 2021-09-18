@@ -35,7 +35,7 @@ public class Main {
 
     private static final boolean DEBUG = false;
     private static ThreadPoolExecutor threadPoolExecutor = null;
-    private static final ConcurrentHashMap<String, Long> fileHashes = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, List<String>> fileHashes = new ConcurrentHashMap<>();
     private static final AtomicInteger filesRead = new AtomicInteger();
     private static final AtomicLong dataRead = new AtomicLong();
     private static int duplicateFiles = 0;
@@ -97,25 +97,8 @@ public class Main {
         }
         printMemUsage("hash finished");
 
-        //Identify all duplicate files
-        ConcurrentHashMap<Long, List<String>> hashedFiles = new ConcurrentHashMap<>();
-        for (Map.Entry<String, Long> sets : fileHashes.entrySet()) {
-            hashedFiles.putIfAbsent(sets.getValue(), new ArrayList<>());
-            hashedFiles.get(sets.getValue()).add(sets.getKey());
-            if (hashedFiles.size() % gcInterval == 0) {
-                printMemUsage("remap " + gcInterval);
-                System.gc();
-                printMemUsage("remap " + gcInterval + " post-gc");
-            }
-            fileHashes.remove(sets.getKey());
-        }
-        printMemUsage("duplicate identification");
-        fileHashes.clear();
-        System.gc();
-        printMemUsage("duplicate identification post-gc");
-
         //Output the duplicates
-        for (Map.Entry<Long, List<String>> sameFiles : hashedFiles.entrySet()) {
+        for (Map.Entry<Long, List<String>> sameFiles : fileHashes.entrySet()) {
             if (sameFiles.getValue().size() > 1) {
                 duplicateFiles += sameFiles.getValue().size();
                 //System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
@@ -127,10 +110,10 @@ public class Main {
                     printMemUsage("output " + gcInterval + " post-gc");
                 }
             }
-            hashedFiles.remove(sameFiles.getKey());
+            fileHashes.remove(sameFiles.getKey());
         }
         printMemUsage("duplicate output");
-        hashedFiles.clear();
+        fileHashes.clear();
         System.gc();
         printMemUsage("duplicate output post-gc");
 
@@ -215,7 +198,8 @@ public class Main {
             }
             dataRead.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
-            fileHashes.put(file.toString(), hash);
+            fileHashes.putIfAbsent(hash, new ArrayList<>());
+            fileHashes.get(hash).add(file.toString());
         } catch (Exception e) {
             e.printStackTrace();
         }
