@@ -133,7 +133,7 @@ public class Main {
         long msSpent = System.currentTimeMillis() - startTime;
         long mbPerSecond = mbRead;
         if (msSpent > 1000) {
-            mbPerSecond = mbRead / (msSpent / 1000);
+            mbPerSecond = (long)(((double)mbRead) / ((double)msSpent / 1000D));
         }
         System.out.println("Hashed " + filesRead + " files, totalling " + mbRead + "MB, and identified " + duplicateFiles + " duplicates in " + msSpent + "ms at " + mbPerSecond + "MBps");
         printMemUsage("finish");
