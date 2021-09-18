@@ -50,6 +50,7 @@ public class Main {
 
     public static void main(String[] args) {
         final long startTime = System.currentTimeMillis();
+        long startTimeSub = System.currentTimeMillis();
 
         if (args.length < 2) {
             System.out.println("Please provide a file for fdupes output, all additional paths will be recursed for duplicates.");
@@ -74,18 +75,23 @@ public class Main {
         threadPoolExecutor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         for (int c = 1; c < args.length; c++) {
             if (args[c] != null) {
+                startTimeSub = System.currentTimeMillis();
                 processDirectory(new File(args[c]));
                 waitForThreadsComplete();
-                System.out.println("Gathered all files for " + c);
+                System.out.println("Gathered all files for " + args[c] + " in " + getTime(startTimeSub));
             }
         }
 
+        startTimeSub = System.currentTimeMillis();
         processDuplicateSizes(); //Queue all files with equal size for hashing
         waitForThreadsComplete();
-        System.out.println("Determined all potential duplicates");
+        System.out.println("Hashed all potential duplicates in " + getTime(startTimeSub));
+
+        startTimeSub = System.currentTimeMillis();
         processDuplicateHashes(); //Hash all queued files
         waitForThreadsComplete();
-        System.out.println("Determined all duplicates");
+        System.out.println("Identified all duplicates in " + getTime(startTimeSub));
+
         writeFdupes(); //Write out the fdupes
         printFinalStats(startTime); //Status
         System.exit(0); //Exit
@@ -223,6 +229,10 @@ public class Main {
             maxThreads = MAX_THREAD_COUNT;
         }
         return maxThreads;
+    }
+
+    public static String getTime(long startTime) {
+        return (System.currentTimeMillis() - startTime) + "ms";
     }
 
     public static void printMemUsage(String stage) {
