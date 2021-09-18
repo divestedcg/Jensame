@@ -16,7 +16,6 @@ TODO
 ----
 - User defined thread count
 - Default thread count determined by storage medium
-- Sorted by file size optimization?
 - Alternate hash algorithms
 
 Credits
