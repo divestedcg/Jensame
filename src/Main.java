@@ -23,9 +23,9 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,7 +35,7 @@ public class Main {
 
     private static final boolean DEBUG = false;
     private static ThreadPoolExecutor threadPoolExecutor = null;
-    private static final ConcurrentHashMap<Long, List<String>> fileHashes = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, ConcurrentSkipListSet<String>> fileHashes = new ConcurrentHashMap<>();
     private static final AtomicInteger filesRead = new AtomicInteger();
     private static final AtomicLong dataRead = new AtomicLong();
     private static int duplicateFiles = 0;
@@ -96,9 +96,11 @@ public class Main {
             }
         }
         printMemUsage("hash finished");
+        System.gc();
+        printMemUsage("hash finished post-gc");
 
         //Output the duplicates
-        for (Map.Entry<Long, List<String>> sameFiles : fileHashes.entrySet()) {
+        for (Map.Entry<Long, ConcurrentSkipListSet<String>> sameFiles : fileHashes.entrySet()) {
             if (sameFiles.getValue().size() > 1) {
                 duplicateFiles += sameFiles.getValue().size();
                 //System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
@@ -198,7 +200,7 @@ public class Main {
             }
             dataRead.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
-            fileHashes.putIfAbsent(hash, new ArrayList<>());
+            fileHashes.putIfAbsent(hash, new ConcurrentSkipListSet<>());
             fileHashes.get(hash).add(file.toString());
         } catch (Exception e) {
             e.printStackTrace();
