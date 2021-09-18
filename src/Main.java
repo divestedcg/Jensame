@@ -23,7 +23,6 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,7 +43,7 @@ public class Main {
     private static long originalMountTotalSize = 0;
     private static final AtomicInteger FILES_READ = new AtomicInteger();
     private static final AtomicLong DATA_READ = new AtomicLong();
-    private static final List<Future<?>> futures = new ArrayList<>();
+    private static final ConcurrentLinkedQueue<Future<?>> futures = new ConcurrentLinkedQueue<>();
     private static final ConcurrentHashMap<Long, ConcurrentSkipListSet<String>> FILE_SIZES = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Long, ConcurrentSkipListSet<String>> FILE_HASHES = new ConcurrentHashMap<>();
     private static final ArrayList<String> FDUPES_CONTENTS = new ArrayList<>();
@@ -76,6 +75,7 @@ public class Main {
         for (int c = 1; c < args.length; c++) {
             if (args[c] != null) {
                 processDirectory(new File(args[c]));
+                waitForThreadsComplete();
             }
         }
 
@@ -207,7 +207,7 @@ public class Main {
                             System.gc();
                             printMemUsage("recursed " + GC_INTERVAL + " directories post-gc");
                         }
-                        findFilesRecursive(f);
+                        futures.add(threadPoolExecutor.submit(() -> findFilesRecursive(f)));
                     } else {
                         if (Files.isRegularFile(f.toPath()) && f.length() >= MINIMUM_FILE_SIZE && f.length() <= MAXIMUM_FILE_SIZE) {
                             FILE_SIZES.putIfAbsent(f.length(), new ConcurrentSkipListSet<>());
