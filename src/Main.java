@@ -34,13 +34,15 @@ public class Main {
     private static final long MINIMUM_FILE_SIZE = (32L * 1024L); //32KB
     private static final long MAXIMUM_FILE_SIZE = (1024L * 1024L * 1024L * 10L); //10GB
     private static final int GC_INTERVAL = 10000;
+    private static final int GC_INTERVAL_HIGH = 100000;
     private static final int MAX_THREAD_COUNT = 8;
-    private static ThreadPoolExecutor threadPoolExecutor = null;
-    private static int totalFiles = 0;
-    private static int totalDirs = 0;
+    private static ThreadPoolExecutor threadPoolExecutorFind = null;
+    private static ThreadPoolExecutor threadPoolExecutorWork = null;
     private static int duplicateFiles = 0;
     private static File fdupesOut = null;
     private static long originalMountTotalSize = 0;
+    private static final AtomicInteger TOTAL_FILES = new AtomicInteger();
+    private static final AtomicInteger TOTAL_DIRS = new AtomicInteger();
     private static final AtomicInteger FILES_READ = new AtomicInteger();
     private static final AtomicLong DATA_READ = new AtomicLong();
     private static final ConcurrentLinkedQueue<Future<?>> futures = new ConcurrentLinkedQueue<>();
@@ -71,25 +73,26 @@ public class Main {
 
         //Start the hashing
         printMemUsage("init");
-        threadPoolExecutor = (ThreadPoolExecutor) Executors.newScheduledThreadPool(getMaxThreads());
-        threadPoolExecutor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        threadPoolExecutorFind = (ThreadPoolExecutor) Executors.newFixedThreadPool(getMaxThreads(true));
+        threadPoolExecutorFind.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        threadPoolExecutorWork = (ThreadPoolExecutor) Executors.newFixedThreadPool(getMaxThreads(true));
+        threadPoolExecutorWork.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         for (int c = 1; c < args.length; c++) {
             if (args[c] != null) {
                 startTimeSub = System.currentTimeMillis();
                 processDirectory(new File(args[c]));
                 waitForThreadsComplete();
-                System.out.println("Gathered all files for " + args[c] + " in " + getTime(startTimeSub));
+                System.out.println("Gathered and started hashing files " + args[c] + " in " + getTime(startTimeSub));
             }
         }
 
         startTimeSub = System.currentTimeMillis();
         processDuplicateSizes(); //Queue all files with equal size for hashing
         waitForThreadsComplete();
-        System.out.println("Hashed all potential duplicates in " + getTime(startTimeSub));
+        System.out.println("Finished hashing all potential duplicates in " + getTime(startTimeSub));
 
         startTimeSub = System.currentTimeMillis();
         processDuplicateHashes(); //Hash all queued files
-        waitForThreadsComplete();
         System.out.println("Identified all duplicates in " + getTime(startTimeSub));
 
         writeFdupes(); //Write out the fdupes
@@ -98,8 +101,7 @@ public class Main {
     }
 
     private static void waitForThreadsComplete() {
-        while (threadPoolExecutor.getActiveCount() > 0) {
-        }
+        //while (threadPoolExecutor.getActiveCount() > 0 && futures.size() > 0) {}
         try {
             for (Future<?> future : futures) {
                 future.get();
@@ -127,14 +129,25 @@ public class Main {
             for (File f : files) {
                 if (f.canRead() && !Files.isSymbolicLink(f.toPath())) {
                     if (f.isDirectory() && (f.getTotalSpace() == originalMountTotalSize)) {
-                        if (totalDirs++ % GC_INTERVAL == 0) {
-                            printMemUsageGc("recursed " + GC_INTERVAL + " directories");
+                        if ((TOTAL_DIRS.getAndIncrement() % GC_INTERVAL) == 0) {
+                            printMemUsageGc("recursed " + TOTAL_DIRS + " directories");
                         }
-                        futures.add(threadPoolExecutor.submit(() -> findFilesRecursive(f)));
+                        futures.add(threadPoolExecutorFind.submit(() -> findFilesRecursive(f)));
                     } else {
                         if (Files.isRegularFile(f.toPath()) && f.length() >= MINIMUM_FILE_SIZE && f.length() <= MAXIMUM_FILE_SIZE) {
-                            FILE_SIZES.putIfAbsent(f.length(), new ConcurrentSkipListSet<>());
-                            FILE_SIZES.get(f.length()).add(f.toString());
+                            if(FILE_SIZES.containsKey(f.length())) {
+                                for (String file : FILE_SIZES.get(f.length())) {
+                                    FILE_SIZES.get(f.length()).remove(file);
+                                    futures.add(threadPoolExecutorWork.submit(() -> getFileHash(new File(file))));
+                                }
+                                futures.add(threadPoolExecutorWork.submit(() -> getFileHash(f)));
+                            } else {
+                                FILE_SIZES.putIfAbsent(f.length(), new ConcurrentSkipListSet<>());
+                                FILE_SIZES.get(f.length()).add(f.toString());
+                            }
+                        }
+                        if ((TOTAL_FILES.getAndIncrement() % GC_INTERVAL_HIGH) == 0) {
+                            printMemUsageGc("found " + TOTAL_FILES + " files");
                         }
                     }
                 }
@@ -144,21 +157,18 @@ public class Main {
 
     private static void processDuplicateSizes() {
         for (Map.Entry<Long, ConcurrentSkipListSet<String>> sameFiles : FILE_SIZES.entrySet()) {
-            totalFiles += sameFiles.getValue().size();
             if (sameFiles.getValue().size() > 1) {
                 for (String file : sameFiles.getValue()) {
-                    futures.add(threadPoolExecutor.submit(() -> getFileHash(new File(file))));
+                    futures.add(threadPoolExecutorWork.submit(() -> getFileHash(new File(file))));
                 }
             }
             FILE_SIZES.remove(sameFiles.getKey());
-            if (totalFiles % GC_INTERVAL == 0) {
-                printMemUsageGc("processing sizes " + GC_INTERVAL);
-            }
         }
         printMemUsage("processed duplicate sizes");
         FILE_SIZES.clear();
         printMemUsageGc("processed duplicate sizes");
     }
+
 
     private static void processDuplicateHashes() {
         for (Map.Entry<Long, ConcurrentSkipListSet<String>> sameFiles : FILE_HASHES.entrySet()) {
@@ -167,8 +177,8 @@ public class Main {
                 //System.out.println("Duplicates of " + sameFiles.getKey() + ": " + Arrays.toString(sameFiles.getValue().toArray()));
                 FDUPES_CONTENTS.addAll(sameFiles.getValue());
                 FDUPES_CONTENTS.add("");
-                if (duplicateFiles % GC_INTERVAL == 0) {
-                    printMemUsageGc("processing duplicate hashes " + GC_INTERVAL);
+                if ((duplicateFiles % GC_INTERVAL) == 0) {
+                    printMemUsageGc("processing duplicate hashes " + duplicateFiles);
                 }
             }
             FILE_HASHES.remove(sameFiles.getKey());
@@ -191,8 +201,8 @@ public class Main {
                 }
             } while (numRead != -1);
             fis.close();
-            if (FILES_READ.getAndIncrement() % GC_INTERVAL == 0) {
-                printMemUsageGc("hashed " + GC_INTERVAL + " files");
+            if ((FILES_READ.getAndIncrement() % GC_INTERVAL) == 0) {
+                printMemUsageGc("hashed " + FILES_READ + " files");
             }
             DATA_READ.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
@@ -219,13 +229,13 @@ public class Main {
         if (msSpent > 1000) {
             mbPerSecond = (long) (((double) mbRead) / ((double) msSpent / 1000D));
         }
-        System.out.println("Found " + totalFiles + " files, hashed " + FILES_READ + " files, totalling " + mbRead + "MB, and identified " + duplicateFiles + " duplicates in " + msSpent + "ms at " + mbPerSecond + "MBps");
+        System.out.println("Found " + TOTAL_FILES + " files, hashed " + FILES_READ + " files, totalling " + mbRead + "MB, and identified " + duplicateFiles + " duplicates in " + msSpent + "ms at " + mbPerSecond + "MBps");
         printMemUsage("finish");
     }
 
-    public static int getMaxThreads() {
+    public static int getMaxThreads(boolean cap) {
         int maxThreads = Runtime.getRuntime().availableProcessors();
-        if (maxThreads > MAX_THREAD_COUNT) {
+        if (cap && maxThreads > MAX_THREAD_COUNT) {
             maxThreads = MAX_THREAD_COUNT;
         }
         return maxThreads;

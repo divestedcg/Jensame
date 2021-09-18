@@ -10,7 +10,7 @@ Use
 - java -jar -XX:+UseShenandoahGC jensame.jar $fdupesOutput $pathsToRecurse
 - cat $fdupesOutput | sudo duperemove -d -b32768 --fdupes -v
 - Example output:
-    - Found 839625 files, hashed 792967 files, totalling 380284MB, and identified 684150 duplicates in 730470ms at 520MBps
+    - Found 10019289 files, hashed 792980 files, totalling 380287MB, and identified 684148 duplicates in 677020ms at 561MBps
 
 TODO
 ----
