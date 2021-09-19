@@ -33,8 +33,8 @@ public class Main {
     private static final boolean DEBUG = false;
     private static final long MINIMUM_FILE_SIZE = (32L * 1024L); //32KB
     private static final long MAXIMUM_FILE_SIZE = (1024L * 1024L * 1024L * 10L); //10GB
-    private static final int GC_INTERVAL = 10000;
-    private static final int GC_INTERVAL_HIGH = 100000;
+    private static final int GC_INTERVAL = 1000;
+    private static final int GC_INTERVAL_HIGH = 10000;
     private static final int MAX_THREAD_COUNT = 8;
     private static ThreadPoolExecutor threadPoolExecutorFind = null;
     private static ThreadPoolExecutor threadPoolExecutorWork = null;
@@ -52,7 +52,7 @@ public class Main {
 
     public static void main(String[] args) {
         final long startTime = System.currentTimeMillis();
-        long startTimeSub = System.currentTimeMillis();
+        long startTimeSub;
 
         if (args.length < 2) {
             System.out.println("Please provide a file for fdupes output, all additional paths will be recursed for duplicates.");
@@ -73,23 +73,20 @@ public class Main {
 
         //Start the hashing
         printMemUsage("init");
-        threadPoolExecutorFind = (ThreadPoolExecutor) Executors.newFixedThreadPool(getMaxThreads(true));
-        threadPoolExecutorFind.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        threadPoolExecutorWork = (ThreadPoolExecutor) Executors.newFixedThreadPool(getMaxThreads(true));
-        threadPoolExecutorWork.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        threadPoolExecutorFind = new ThreadPoolExecutor(getMaxThreads(true), getMaxThreads(true), 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(8), new ThreadPoolExecutor.CallerRunsPolicy());
+        threadPoolExecutorWork = new ThreadPoolExecutor(getMaxThreads(true), getMaxThreads(true), 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(4), new ThreadPoolExecutor.CallerRunsPolicy());
         for (int c = 1; c < args.length; c++) {
             if (args[c] != null) {
                 startTimeSub = System.currentTimeMillis();
                 processDirectory(new File(args[c]));
                 waitForThreadsComplete();
                 System.out.println("Gathered and started hashing files " + args[c] + " in " + getTime(startTimeSub));
+                startTimeSub = System.currentTimeMillis();
+                processDuplicateSizes(); //Queue all files with equal size for hashing
+                waitForThreadsComplete();
+                System.out.println("Finished hashing all potential duplicates " + args[c] + "in " + getTime(startTimeSub));
             }
         }
-
-        startTimeSub = System.currentTimeMillis();
-        processDuplicateSizes(); //Queue all files with equal size for hashing
-        waitForThreadsComplete();
-        System.out.println("Finished hashing all potential duplicates in " + getTime(startTimeSub));
 
         startTimeSub = System.currentTimeMillis();
         processDuplicateHashes(); //Hash all queued files
@@ -101,14 +98,16 @@ public class Main {
     }
 
     private static void waitForThreadsComplete() {
-        //while (threadPoolExecutor.getActiveCount() > 0 && futures.size() > 0) {}
         try {
             for (Future<?> future : futures) {
                 future.get();
+                futures.remove(future);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+        printMemUsage("thread pool finished");
+        futures.clear();
         printMemUsageGc("thread pool emptied");
     }
 
@@ -129,10 +128,10 @@ public class Main {
             for (File f : files) {
                 if (f.canRead() && !Files.isSymbolicLink(f.toPath())) {
                     if (f.isDirectory() && (f.getTotalSpace() == originalMountTotalSize)) {
+                        futures.add(threadPoolExecutorFind.submit(() -> findFilesRecursive(f)));
                         if ((TOTAL_DIRS.getAndIncrement() % GC_INTERVAL) == 0) {
                             printMemUsageGc("recursed " + TOTAL_DIRS + " directories");
                         }
-                        futures.add(threadPoolExecutorFind.submit(() -> findFilesRecursive(f)));
                     } else {
                         if (Files.isRegularFile(f.toPath()) && f.length() >= MINIMUM_FILE_SIZE && f.length() <= MAXIMUM_FILE_SIZE) {
                             if(FILE_SIZES.containsKey(f.length())) {
@@ -201,15 +200,16 @@ public class Main {
                 }
             } while (numRead != -1);
             fis.close();
-            if ((FILES_READ.getAndIncrement() % GC_INTERVAL) == 0) {
-                printMemUsageGc("hashed " + FILES_READ + " files");
-            }
             DATA_READ.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
             FILE_HASHES.putIfAbsent(hash, new ConcurrentSkipListSet<>());
             FILE_HASHES.get(hash).add(file.toString());
         } catch (Exception e) {
             //e.printStackTrace();
+        } finally {
+            if ((FILES_READ.getAndIncrement() % GC_INTERVAL) == 0) {
+                printMemUsageGc("hashed " + FILES_READ + " files");
+            }
         }
     }
 
@@ -273,5 +273,6 @@ public class Main {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        contents.clear();
     }
 }
