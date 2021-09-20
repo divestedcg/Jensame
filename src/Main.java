@@ -34,7 +34,6 @@ public class Main {
     private static final boolean DEBUG = false;
     private static final long MINIMUM_FILE_SIZE = (32L * 1024L); //32KB
     private static final long MAXIMUM_FILE_SIZE = (1024L * 1024L * 1024L * 10L); //10GB
-    private static final int READ_SMALL_FILE = (128 * 1024); //128KB, used for optimized read function
     private static final int READ_BUFFER = 4096;
     private static final int GC_INTERVAL = 1000;
     private static final int GC_INTERVAL_HIGH = 10000;
@@ -193,18 +192,14 @@ public class Main {
     private static void getFileHash(File file) {
         try {
             long hash = 0;
-            if(file.length() <= READ_SMALL_FILE) {
-                hash = LongHashFunction.xx3(hash).hashBytes(Files.readAllBytes(file.toPath()));
-            } else {
-                FileChannel input = new FileInputStream(file).getChannel();
-                ByteBuffer buffer = ByteBuffer.allocateDirect(READ_BUFFER);
-                while (input.read(buffer) != -1) {
-                    buffer.flip();
-                    hash = LongHashFunction.xx3(hash).hashBytes(buffer);
-                    buffer.clear();
-                }
-                input.close();
+            FileChannel input = new FileInputStream(file).getChannel();
+            ByteBuffer buffer = ByteBuffer.allocateDirect(READ_BUFFER);
+            while (input.read(buffer) != -1) {
+                buffer.flip();
+                hash = LongHashFunction.xx3(hash).hashBytes(buffer);
+                buffer.clear();
             }
+            input.close();
             DATA_READ.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
             FILE_HASHES.putIfAbsent(hash, new ConcurrentSkipListSet<>());
