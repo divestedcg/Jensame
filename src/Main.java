@@ -193,14 +193,18 @@ public class Main {
     private static void getFileHash(File file) {
         try {
             long hash = 0;
-            FileChannel input = new FileInputStream(file).getChannel();
-            ByteBuffer buffer = ByteBuffer.allocateDirect((file.length() <= READ_SMALL_FILE) ? READ_SMALL_FILE : READ_BUFFER);
-            while (input.read(buffer) != -1) {
-                buffer.flip();
-                hash = LongHashFunction.xx3(hash).hashBytes(buffer);
-                buffer.clear();
+            if(file.length() <= READ_SMALL_FILE) {
+                hash = LongHashFunction.xx3(hash).hashBytes(Files.readAllBytes(file.toPath()));
+            } else {
+                FileChannel input = new FileInputStream(file).getChannel();
+                ByteBuffer buffer = ByteBuffer.allocateDirect(READ_BUFFER);
+                while (input.read(buffer) != -1) {
+                    buffer.flip();
+                    hash = LongHashFunction.xx3(hash).hashBytes(buffer);
+                    buffer.clear();
+                }
+                input.close();
             }
-            input.close();
             DATA_READ.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
             FILE_HASHES.putIfAbsent(hash, new ConcurrentSkipListSet<>());
