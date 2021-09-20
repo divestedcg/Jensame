@@ -19,8 +19,9 @@ import net.openhft.hashing.LongHashFunction;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.InputStream;
 import java.io.PrintWriter;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Map;
@@ -33,6 +34,8 @@ public class Main {
     private static final boolean DEBUG = false;
     private static final long MINIMUM_FILE_SIZE = (32L * 1024L); //32KB
     private static final long MAXIMUM_FILE_SIZE = (1024L * 1024L * 1024L * 10L); //10GB
+    private static final int READ_SMALL_FILE = (128 * 1024); //128KB, used for optimized read function
+    private static final int READ_BUFFER = 4096;
     private static final int GC_INTERVAL = 1000;
     private static final int GC_INTERVAL_HIGH = 10000;
     private static final int MAX_THREAD_COUNT = 8;
@@ -134,7 +137,7 @@ public class Main {
                         }
                     } else {
                         if (Files.isRegularFile(f.toPath()) && f.length() >= MINIMUM_FILE_SIZE && f.length() <= MAXIMUM_FILE_SIZE) {
-                            if(FILE_SIZES.containsKey(f.length())) {
+                            if (FILE_SIZES.containsKey(f.length())) {
                                 for (String file : FILE_SIZES.get(f.length())) {
                                     FILE_SIZES.get(f.length()).remove(file);
                                     futures.add(threadPoolExecutorWork.submit(() -> getFileHash(new File(file))));
@@ -189,17 +192,15 @@ public class Main {
 
     private static void getFileHash(File file) {
         try {
-            InputStream fis = new FileInputStream(file);
-            byte[] buffer = new byte[4096];
-            int numRead;
             long hash = 0;
-            do {
-                numRead = fis.read(buffer);
-                if (numRead > 0) {
-                    hash = LongHashFunction.xx3(hash).hashBytes(buffer);
-                }
-            } while (numRead != -1);
-            fis.close();
+            FileChannel input = new FileInputStream(file).getChannel();
+            ByteBuffer buffer = ByteBuffer.allocateDirect((file.length() <= READ_SMALL_FILE) ? READ_SMALL_FILE : READ_BUFFER);
+            while (input.read(buffer) != -1) {
+                buffer.flip();
+                hash = LongHashFunction.xx3(hash).hashBytes(buffer);
+                buffer.clear();
+            }
+            input.close();
             DATA_READ.getAndAdd(file.length());
             //System.out.println(file.toString() + " - " + hash);
             FILE_HASHES.putIfAbsent(hash, new ConcurrentSkipListSet<>());
