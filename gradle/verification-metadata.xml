@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<verification-metadata xmlns="https://schema.gradle.org/dependency-verification" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schema.gradle.org/dependency-verification https://schema.gradle.org/dependency-verification/dependency-verification-1.1.xsd">
+   <configuration>
+      <verify-metadata>true</verify-metadata>
+      <verify-signatures>true</verify-signatures>
+      <key-servers>
+         <key-server uri="hkps://keys.openpgp.org"/>
+      </key-servers>
+      <trusted-keys>
+         <trusted-key id="a7d8be3d575d6c5040e889331b6e3bddd4415872" group="net.openhft"/>
+      </trusted-keys>
+   </configuration>
+   <components/>
+</verification-metadata>
